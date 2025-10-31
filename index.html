@@ -34,7 +34,7 @@
       }
 
       main {
-        width: min(100vw, 640px);
+        width: min(100vw, 960px);
         display: grid;
         gap: 1rem;
         padding: 1rem;
@@ -110,7 +110,7 @@
         <span id="streak">Power: 0%</span>
       </div>
 
-      <canvas id="game" width="640" height="360" aria-label="Avocado Adventure game area"></canvas>
+      <canvas id="game" width="960" height="540" aria-label="Avocado Adventure game area"></canvas>
 
       <button id="restart" hidden>Play Again</button>
     </main>
@@ -411,8 +411,8 @@
         const { clientWidth } = canvas.parentElement;
         canvas.width = clientWidth;
         canvas.height = clientWidth / ratio;
-        if (canvas.height > 420) {
-          canvas.height = 420;
+        if (canvas.height > 630) {
+          canvas.height = 630;
           canvas.width = canvas.height * ratio;
         }
         avocado.y = canvas.height - groundHeight - avocado.height;
