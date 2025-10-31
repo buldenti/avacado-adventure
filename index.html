@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Avocado Adventure</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --sky: #8ed6ff;
+        --ground: #4c3f2f;
+        --hill: #6fbe60;
+        --seed: #ffc857;
+        --avocado-skin: #3a7d44;
+        --avocado-flesh: #9fc46f;
+        --avocado-pit: #7b4b25;
+        --text: #0f172a;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(var(--sky), #d4f6ff 70%);
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        color: var(--text);
+        overflow: hidden;
+      }
+
+      main {
+        width: min(100vw, 640px);
+        display: grid;
+        gap: 1rem;
+        padding: 1rem;
+      }
+
+      canvas {
+        width: 100%;
+        height: auto;
+        border-radius: 18px;
+        background: transparent;
+        box-shadow: 0 24px 48px rgba(12, 74, 110, 0.25);
+        touch-action: none;
+      }
+
+      header {
+        text-align: center;
+      }
+
+      h1 {
+        font-size: clamp(1.8rem, 4vw, 2.4rem);
+        letter-spacing: 0.02em;
+      }
+
+      p {
+        font-size: clamp(0.95rem, 2.8vw, 1.05rem);
+        line-height: 1.46;
+      }
+
+      .hud {
+        display: flex;
+        justify-content: space-between;
+        font-weight: 600;
+      }
+
+      button {
+        padding: 0.65rem 1.1rem;
+        border: none;
+        border-radius: 999px;
+        background: linear-gradient(120deg, #2f855a, #38a169);
+        color: #fff;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button:active {
+        transform: translateY(2px);
+        box-shadow: none;
+      }
+
+      @media (pointer: coarse) {
+        button {
+          font-size: 1.05rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Avocado Adventure</h1>
+        <p>
+          Devour the mystical seeds to gain power! Press
+          <strong>space</strong>
+          or tap the screen to help our avocado hero hop over hazards and gobble up every seed. How long can you keep
+          the feast going?
+        </p>
+      </header>
+
+      <div class="hud">
+        <span id="score">Seeds: 0</span>
+        <span id="streak">Power: 0%</span>
+      </div>
+
+      <canvas id="game" width="640" height="360" aria-label="Avocado Adventure game area"></canvas>
+
+      <button id="restart" hidden>Play Again</button>
+    </main>
+
+    <script>
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const scoreEl = document.getElementById("score");
+      const streakEl = document.getElementById("streak");
+      const restartBtn = document.getElementById("restart");
+
+      let lastTime = 0;
+      let gameOver = false;
+      let spawnTimer = 0;
+      let score = 0;
+      let power = 0;
+      let lastScoreDisplay = -1;
+      let lastPowerDisplay = -1;
+      let speed = 260;
+
+      const gravity = 1200;
+      const jumpVelocity = -480;
+      const groundHeight = 72;
+
+      const avocado = {
+        x: 120,
+        y: canvas.height - groundHeight - 64,
+        width: 48,
+        height: 64,
+        vy: 0,
+        isOnGround() {
+          return this.y >= canvas.height - groundHeight - this.height;
+        },
+        jump() {
+          if (this.isOnGround()) {
+            this.vy = jumpVelocity;
+          }
+        },
+        update(dt) {
+          this.vy += gravity * dt;
+          this.y += this.vy * dt;
+          if (this.isOnGround()) {
+            this.y = canvas.height - groundHeight - this.height;
+            this.vy = Math.max(this.vy, 0);
+          }
+        },
+        draw() {
+          const { x, y, width: w, height: h } = this;
+          ctx.save();
+          ctx.translate(x, y);
+
+          // Body
+          ctx.fillStyle = "#2f855a";
+          ctx.beginPath();
+          ctx.ellipse(w / 2, h / 2, w / 2, h / 1.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Flesh
+          ctx.fillStyle = "#a3d574";
+          ctx.beginPath();
+          ctx.ellipse(w / 2, h / 2, w / 2.5, h / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Pit
+          ctx.fillStyle = "#7b4b25";
+          ctx.beginPath();
+          ctx.ellipse(w / 2, h / 1.7, w / 5, h / 5, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Eyes
+          ctx.fillStyle = "#1a202c";
+          ctx.beginPath();
+          ctx.arc(w / 2.7, h / 2.6, 4, 0, Math.PI * 2);
+          ctx.arc((w / 2) * 1.35, h / 2.6, 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Smile
+          ctx.strokeStyle = "#1a202c";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(w / 2, h / 2.1, 12, Math.PI * 0.2, Math.PI * 0.8);
+          ctx.stroke();
+
+          ctx.restore();
+        },
+      };
+
+      const seeds = [];
+
+      function spawnSeed() {
+        const size = 24;
+        const altitude = Math.random() < 0.2 ? 80 : 0;
+        seeds.push({
+          x: canvas.width + size,
+          y: canvas.height - groundHeight - size - altitude,
+          size,
+          collected: false,
+        });
+      }
+
+      function resetGame() {
+        seeds.length = 0;
+        avocado.y = canvas.height - groundHeight - avocado.height;
+        avocado.vy = 0;
+        lastTime = 0;
+        spawnTimer = 0;
+        score = 0;
+        power = 0;
+        speed = 260;
+        gameOver = false;
+        updateHUD(true);
+        restartBtn.hidden = true;
+        requestAnimationFrame(loop);
+      }
+
+      function updateHUD(force = false) {
+        if (force || score !== lastScoreDisplay) {
+          scoreEl.textContent = `Seeds: ${score}`;
+          lastScoreDisplay = score;
+        }
+        const pct = Math.min(100, Math.round(power));
+        if (force || pct !== lastPowerDisplay) {
+          streakEl.textContent = `Power: ${pct}%`;
+          lastPowerDisplay = pct;
+        }
+      }
+
+      function drawBackground(dt) {
+        ctx.fillStyle = "#f0f9ff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Parallax hills for motion cues.
+        ctx.fillStyle = "rgba(111, 190, 96, 0.9)";
+        const hillSpeed = speed * 0.2 * dt;
+        drawHills(hillSpeed);
+
+        ctx.fillStyle = "rgba(87, 171, 78, 0.8)";
+        drawHills(hillSpeed * 1.5, 120);
+
+        ctx.fillStyle = "#70594a";
+        ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+
+        ctx.fillStyle = "#8f6b4f";
+        for (let x = -40; x < canvas.width; x += 48) {
+          ctx.fillRect(x, canvas.height - groundHeight, 24, 6);
+        }
+      }
+
+      function drawHills(offset, height = 180) {
+        const patternWidth = 320;
+        const time = performance.now() * 0.0002;
+        const baseX = (time * speed * 20 + offset) % patternWidth;
+        for (let i = -1; i <= canvas.width / patternWidth + 2; i += 1) {
+          const x = i * patternWidth - baseX;
+          ctx.beginPath();
+          ctx.moveTo(x, canvas.height - groundHeight);
+          ctx.quadraticCurveTo(
+            x + patternWidth / 2,
+            canvas.height - groundHeight - height,
+            x + patternWidth,
+            canvas.height - groundHeight
+          );
+          ctx.fill();
+        }
+      }
+
+      function updateSeeds(dt) {
+        for (const seed of seeds) {
+          seed.x -= speed * dt;
+
+          if (!seed.collected && collides(avocado, seed)) {
+            seed.collected = true;
+            score += 1;
+            power = Math.min(100, power + 6);
+            speed = Math.min(520, speed + 6);
+            updateHUD();
+          }
+        }
+
+        // Remove off-screen seeds.
+        while (seeds.length && seeds[0].x + seeds[0].size < 0) {
+          if (!seeds[0].collected) {
+            power = Math.max(0, power - 12);
+            updateHUD();
+          }
+          seeds.shift();
+        }
+      }
+
+      function drawSeeds() {
+        for (const seed of seeds) {
+          if (seed.collected) continue;
+          ctx.save();
+          ctx.translate(seed.x, seed.y);
+          ctx.fillStyle = "#ffc857";
+          ctx.beginPath();
+          ctx.ellipse(seed.size / 2, seed.size / 2, seed.size / 2, seed.size / 3, Math.PI / 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function collides(player, seed) {
+        const px = player.x;
+        const py = player.y;
+        const pw = player.width;
+        const ph = player.height;
+        const sx = seed.x;
+        const sy = seed.y;
+        const sw = seed.size;
+        const sh = seed.size;
+        return px < sx + sw && px + pw > sx && py < sy + sh && py + ph > sy;
+      }
+
+      function roundRectPath(x, y, width, height, radius) {
+        const r = Math.min(radius, width / 2, height / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + width - r, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+        ctx.lineTo(x + width, y + height - r);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+        ctx.lineTo(x + r, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      function drawPowerMeter() {
+        const barWidth = 180;
+        const barHeight = 12;
+        const x = canvas.width - barWidth - 24;
+        const y = 24;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.2)";
+        roundRectPath(x, y, barWidth, barHeight, 6);
+        ctx.fill();
+        ctx.fillStyle = "rgba(56, 161, 105, 0.85)";
+        const filled = (power / 100) * (barWidth - 4);
+        if (filled > 0) {
+          roundRectPath(x + 2, y + 2, filled, barHeight - 4, 4);
+          ctx.fill();
+        }
+      }
+
+      function drawGameOver() {
+        ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 36px 'Segoe UI'";
+        ctx.textAlign = "center";
+        ctx.fillText("Out of Power!", canvas.width / 2, canvas.height / 2 - 24);
+        ctx.font = "20px 'Segoe UI'";
+        ctx.fillText(`Seeds devoured: ${score}`, canvas.width / 2, canvas.height / 2 + 16);
+        ctx.fillText("Tap or press space to try again", canvas.width / 2, canvas.height / 2 + 50);
+      }
+
+      function loop(timestamp) {
+        if (gameOver) return;
+
+        const dt = Math.min((timestamp - lastTime) / 1000 || 0, 0.033);
+        lastTime = timestamp;
+        spawnTimer += dt;
+
+        drawBackground(dt);
+        avocado.update(dt);
+        avocado.draw();
+
+        if (spawnTimer > 0.8) {
+          spawnSeed();
+          spawnTimer = 0.35 * Math.random();
+        }
+
+        updateSeeds(dt);
+
+        if (score > 0) {
+          const before = power;
+          power = Math.max(0, power - dt * 5);
+          if (power !== before) {
+            updateHUD();
+          }
+        }
+        drawSeeds();
+        drawPowerMeter();
+
+        if (power <= 0 && score > 0) {
+          gameOver = true;
+          drawGameOver();
+          restartBtn.hidden = false;
+          return;
+        }
+
+        requestAnimationFrame(loop);
+      }
+
+      function resizeCanvas() {
+        const ratio = 16 / 9;
+        const { clientWidth } = canvas.parentElement;
+        canvas.width = clientWidth;
+        canvas.height = clientWidth / ratio;
+        if (canvas.height > 420) {
+          canvas.height = 420;
+          canvas.width = canvas.height * ratio;
+        }
+        avocado.y = canvas.height - groundHeight - avocado.height;
+      }
+
+      function handleJump() {
+        if (gameOver) {
+          resetGame();
+        } else {
+          avocado.jump();
+        }
+      }
+
+      function handleKeydown(event) {
+        if (event.code === "Space") {
+          event.preventDefault();
+          handleJump();
+        }
+      }
+
+      function handlePointerDown(event) {
+        event.preventDefault();
+        handleJump();
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("keydown", handleKeydown);
+      canvas.addEventListener("pointerdown", handlePointerDown);
+
+      restartBtn.addEventListener("click", resetGame);
+
+      resizeCanvas();
+      updateHUD();
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
