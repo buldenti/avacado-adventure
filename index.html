@@ -126,6 +126,16 @@
       const avocadoImg = new Image();
       avocadoImg.src = "img/avacado.png";
 
+      const eatSound = new Audio("sounds/eat.mp3");
+      const jumpSound = new Audio("sounds/jump.mp3");
+
+      function playSound(audio) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {
+          /* suppress autoplay errors */
+        });
+      }
+
       let lastTime = 0;
       let gameOver = false;
       let spawnTimer = 0;
@@ -151,6 +161,7 @@
         jump() {
           if (this.isOnGround()) {
             this.vy = jumpVelocity;
+            playSound(jumpSound);
           }
         },
         update(dt) {
@@ -255,6 +266,7 @@
             score += 1;
             power = Math.min(100, power + 6);
             speed = Math.min(520, speed + 6);
+            playSound(eatSound);
             updateHUD();
           }
         }
